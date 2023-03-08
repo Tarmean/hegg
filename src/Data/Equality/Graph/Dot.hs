@@ -46,7 +46,7 @@ toDotGraph eg = digraph (Str "egraph") $ do
         forM_ (zip (S.toList nodes) [0..]) $ \(n, i_in_class) -> do
 
             let n' = canonicalize n eg
-            let i_in_class' = find i_in_class eg
+            let i_in_class' = i_in_class
 
             forM_ (zip (children n') [0::Int ..]) $ \(child, arg_i) -> do
                 -- TODO: On anchors and labels...?
