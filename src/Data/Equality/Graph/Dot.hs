@@ -4,11 +4,7 @@
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE TypeFamilies              #-}
 
-module Data.Equality.Graph.Dot
-    ( module Data.Equality.Graph.Dot
-    , writeDotFile
-    )
-    where
+module EGraphDot where
 
 import Control.Monad
 
@@ -23,22 +19,21 @@ import Data.GraphViz.Types.Monadic
 import Data.GraphViz.Attributes (style, dotted, textLabel)
 import Data.GraphViz.Attributes.Complete
 
-import Data.Equality.Saturation
 import Data.Equality.Graph
-import Data.Equality.Matching
-import Data.Equality.Matching.Database
+import Data.Equality.Graph.Internal (classes)
 
+txt :: Show a => a -> Text
 txt = pack . show
 
-writeDemo :: (Functor f, Foldable f, Show (ENode f)) => EGraph ana f -> IO ()
+writeDemo :: (Functor f, Foldable f, Show (ENode f), Traversable f) => EGraph ana f -> IO ()
 writeDemo = writeDotFile "demo.gv" . toDotGraph
 
-toDotGraph :: (Functor f, Foldable f, Show (ENode f)) => EGraph ana f -> DotGraph Text
+toDotGraph :: (Functor f, Foldable f, Show (ENode f), Traversable f) => EGraph ana f -> DotGraph Text
 toDotGraph eg = digraph (Str "egraph") $ do
 
     graphAttrs [Compound True, ClusterRank Local]
 
-    forM_ (IM.toList $ classes eg) $ \(class_id, EClass _ nodes parents) ->
+    forM_ (IM.toList $ classes eg) $ \(class_id, EClass _ nodes _ana _parents) ->
 
         subgraph (Str ("cluster_" <> txt class_id)) $ do
             graphAttrs [style dotted]
@@ -46,14 +41,14 @@ toDotGraph eg = digraph (Str "egraph") $ do
                 let n' = canonicalize n eg
                 node (txt class_id <> "." <> txt (find i eg)) [textLabel (txt n')]
 
-    forM_ (IM.toList $ classes eg) $ \(class_id, EClass _ nodes parents) -> do
+    forM_ (IM.toList $ classes eg) $ \(class_id, EClass _ nodes _ana _parents) -> do
 
         forM_ (zip (S.toList nodes) [0..]) $ \(n, i_in_class) -> do
 
             let n' = canonicalize n eg
             let i_in_class' = find i_in_class eg
 
-            forM_ (zip (children n') [0..]) $ \(child, arg_i) -> do
+            forM_ (zip (children n') [0::Int ..]) $ \(child, arg_i) -> do
                 -- TODO: On anchors and labels...?
                 let child_leader = find child eg
                 if child_leader == class_id
