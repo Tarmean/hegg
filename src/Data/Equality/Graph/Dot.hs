@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE TypeFamilies              #-}
 
-module EGraphDot where
+module Data.Equality.Graph.Dot where
 
 import Control.Monad
 
