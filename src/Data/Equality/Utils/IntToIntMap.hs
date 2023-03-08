@@ -21,6 +21,7 @@ module Data.Equality.Utils.IntToIntMap
 
 import GHC.Exts
 import Data.Bits
+import GHC.Stack (HasCallStack)
 
 -- | A map of integers to integers
 type IntToIntMap :: TYPE ('BoxedRep 'Unlifted)
@@ -39,12 +40,12 @@ type Val         = Int#
 
 -- | \(O(\min(n,W))\). Find the value at a key.
 -- Calls 'error' when the element can not be found.
-(!) :: IntToIntMap -> Key -> Val
+(!) :: HasCallStack => IntToIntMap -> Key -> Val
 (!) m k = find k m
 {-# INLINE (!) #-}
 
 -- | Find the 'Val' for a 'Key' in an 'IntToIntMap'
-find :: Key -> IntToIntMap -> Val
+find :: HasCallStack => Key -> IntToIntMap -> Val
 find (int2Word# -> k) = find' k
 {-# INLINE find #-}
 
@@ -72,7 +73,7 @@ insert' k x Nil = Tip k x
 -- unexpectedly. Hopefully the testsuite will serve to warn us of this
 --
 -- Update: The speedup is not noticeable, so we don't do it, but I'll leave the comment here for now
-find' :: InternalKey -> IntToIntMap -> Val
+find' :: HasCallStack => InternalKey -> IntToIntMap -> Val
 find' k (Bin _p m l r)
   | zero k m  = find' k l
   | otherwise = find' k r
