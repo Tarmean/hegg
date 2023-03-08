@@ -30,10 +30,10 @@ import Data.Equality.Matching.Database
 
 txt = pack . show
 
-writeDemo :: (Functor f, Foldable f, Show (ENode f)) => EGraph f -> IO ()
+writeDemo :: (Functor f, Foldable f, Show (ENode f)) => EGraph ana f -> IO ()
 writeDemo = writeDotFile "demo.gv" . toDotGraph
 
-toDotGraph :: (Functor f, Foldable f, Show (ENode f)) => EGraph f -> DotGraph Text
+toDotGraph :: (Functor f, Foldable f, Show (ENode f)) => EGraph ana f -> DotGraph Text
 toDotGraph eg = digraph (Str "egraph") $ do
 
     graphAttrs [Compound True, ClusterRank Local]
