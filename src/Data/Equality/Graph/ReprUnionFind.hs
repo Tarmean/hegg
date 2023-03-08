@@ -16,6 +16,7 @@ module Data.Equality.Graph.ReprUnionFind
   ) where
 
 import Data.Equality.Graph.Classes.Id
+import GHC.Stack (HasCallStack)
 
 #if __GLASGOW_HASKELL__ >= 902
 
@@ -97,7 +98,7 @@ unionSets a b (RUF im si) = (a, RUF (IIM.insert b a im) si)
     -- new_hc = IM.adjust ((b:) . (represented_by_b <>)) a (IM.delete b hc)
 
 -- | Find the canonical representation of an e-class id
-findRepr :: ClassId -> ReprUnionFind
+findRepr :: HasCallStack => ClassId -> ReprUnionFind
          -> ClassId -- ^ The found canonical representation
 #if __GLASGOW_HASKELL__ >= 902
 findRepr v@(I# v#) (RUF m s) =
