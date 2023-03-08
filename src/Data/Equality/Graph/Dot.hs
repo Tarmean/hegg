@@ -39,7 +39,7 @@ toDotGraph eg = digraph (Str "egraph") $ do
             graphAttrs [style dotted]
             forM_ (zip (S.toList nodes) [0..]) $ \(n, i) -> do
                 let n' = canonicalize n eg
-                node (txt class_id <> "." <> txt (find i eg)) [textLabel (txt n')]
+                node (txt class_id <> "." <> txt i) [textLabel (txt n')]
 
     forM_ (IM.toList $ classes eg) $ \(class_id, EClass _ nodes _ana _parents) -> do
 
