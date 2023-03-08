@@ -56,6 +56,8 @@ import Data.Equality.Graph.Lens
 
 import Data.Equality.Utils
 
+import GHC.Stack (HasCallStack)
+
 -- ROMES:TODO: join things built in paralell?
 -- instance Ord1 l => Semigroup (EGraph l) where
 --     (<>) eg1 eg2 = undefined -- not so easy
