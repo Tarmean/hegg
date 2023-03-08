@@ -305,7 +305,7 @@ canonicalize (Node enode) eg = Node $ fmap (`find` eg) enode
 
 -- | Find the canonical representation of an e-class id in the e-graph
 -- Invariant: The e-class id always exists.
-find :: ClassId -> EGraph a l -> ClassId
+find :: HasCallStack => ClassId -> EGraph a l -> ClassId
 find cid = findRepr cid . unionFind
 {-# INLINE find #-}
 
