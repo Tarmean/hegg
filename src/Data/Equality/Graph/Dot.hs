@@ -26,7 +26,7 @@ import Data.GraphViz.Attributes.Complete
 import Data.Equality.Saturation
 import Data.Equality.Graph
 import Data.Equality.Matching
-import Database
+import Data.Equality.Matching.Database
 
 txt = pack . show
 
