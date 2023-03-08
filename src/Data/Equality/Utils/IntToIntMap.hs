@@ -74,11 +74,13 @@ insert' k x Nil = Tip k x
 --
 -- Update: The speedup is not noticeable, so we don't do it, but I'll leave the comment here for now
 find' :: HasCallStack => InternalKey -> IntToIntMap -> Val
-find' k (Bin _p m l r)
-  | zero k m  = find' k l
-  | otherwise = find' k r
-find' k (Tip kx x) | isTrue# (k `eqWord#` kx) = x
-find' _ _ = error ("IntMap.!: key ___ is not an element of the map")
+find' = go
+  where
+    go k (Bin _p m l r)
+      | zero k m  = go k l
+      | otherwise = go k r
+    go k (Tip kx x) | isTrue# (k `eqWord#` kx) = x
+    go _ _ = error ("IntMap.!: key ___ is not an element of the map")
 
 -- * Other stuff taken from IntMap
 
