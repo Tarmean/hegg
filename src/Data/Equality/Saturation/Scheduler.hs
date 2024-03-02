@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE AllowAmbiguousTypes #-} -- Scheduler
 {-# LANGUAGE TypeFamilies #-}
@@ -11,25 +12,26 @@ and is used by default in 'Data.Equality.Saturation.equalitySaturation'
 
 -}
 module Data.Equality.Saturation.Scheduler
-    ( Scheduler(..), BackoffScheduler(..), defaultBackoffScheduler
+    ( Scheduler(..), BackoffScheduler(..), defaultBackoffScheduler, updateStats, Score(..), fromSubst, fromPicoSeconds
     ) where
 
 import qualified Data.IntMap.Strict as IM
 import Data.Equality.Matching
+import Data.Equality.Matching.Database (Subst)
 
 -- | A 'Scheduler' determines whether a certain rewrite rule is banned from
 -- being used based on statistics it defines and collects on applied rewrite
 -- rules.
-class Scheduler s where
+class (Show (Stat s)) => Scheduler s where
     data Stat s
 
     -- | Scheduler: update stats
-    updateStats :: s                  -- ^ The scheduler itself
+    updateStatsScore :: s                  -- ^ The scheduler itself
                 -> Int                -- ^ Iteration we're in
                 -> Int                -- ^ Index of rewrite rule we're updating
                 -> Maybe (Stat s)     -- ^ Current stat for this rewrite rule (we already got it so no point in doing a lookup again)
                 -> IM.IntMap (Stat s) -- ^ The current stats map
-                -> [Match]            -- ^ The list of matches resulting from matching this rewrite rule
+                -> Score                -- ^ The list of matches resulting from matching this rewrite rule
                 -> IM.IntMap (Stat s) -- ^ The updated map with new stats
 
     -- Decide whether to apply a matched rule based on its stats and current iteration
@@ -48,8 +50,8 @@ class Scheduler s where
 --
 -- Originaly in [egg](https://docs.rs/egg/0.6.0/egg/struct.BackoffScheduler.html)
 data BackoffScheduler = BackoffScheduler
-  { matchLimit :: {-# UNPACK #-} !Int
-  , banLength  :: {-# UNPACK #-} !Int }
+  { matchLimit :: {-# UNPACK #-} !Int
+  , banLength  :: {-# UNPACK #-} !Int }
 
 -- | The default 'BackoffScheduler'.
 -- 
@@ -59,13 +61,15 @@ defaultBackoffScheduler = BackoffScheduler 1000 10
 
 instance Scheduler BackoffScheduler where
     data Stat BackoffScheduler =
-      BSS { bannedUntil :: {-# UNPACK #-} !Int
+      BSS { bannedUntil :: {-# UNPACK #-} !Int
           , timesBanned :: {-# UNPACK #-} !Int
+          , totalScore::{-# UNPACK #-} !Score
+
           } deriving Show
 
-    updateStats bos i rw currentStat stats matches =
+    updateStatsScore bos i rw currentStat stats s@(Score totalLen _) =
 
-        if total_len > threshold
+        if totalLen > threshold
 
           then
             IM.alter updateBans rw stats
@@ -76,8 +80,6 @@ instance Scheduler BackoffScheduler where
         where
 
           -- TODO: Overall difficult, and buggy at the moment.
-          total_len = sum (map (length . matchSubst) matches)
-
           bannedN = case currentStat of
                       Nothing -> 0;
                       Just (timesBanned -> n) -> n
@@ -87,8 +89,25 @@ instance Scheduler BackoffScheduler where
           ban_length = banLength bos * (2^bannedN)
 
           updateBans = \case
-            Nothing -> Just (BSS (i + ban_length) 1)
-            Just (BSS _ n)  -> Just (BSS (i + ban_length) (n+1))
+            Nothing -> Just (BSS (i + ban_length) 1 s)
+            Just (BSS _ n o)  -> Just (BSS (i + ban_length) (n+1) (o <> s))
 
     isBanned i s = i < bannedUntil s
+
+updateStats :: (Foldable t, Scheduler s) => s -> Int -> Int -> Maybe (Stat s) -> IM.IntMap (Stat s) -> t Match -> IM.IntMap (Stat s)
+updateStats bos i rw currentStat stats matches = updateStatsScore  bos i rw currentStat stats totalLen
+  where totalLen = foldMap (fromSubst . matchSubst) matches
+data Score = Score { genColumns :: Int, timeUsedPicoSeconds :: Integer}
+  deriving (Eq, Ord)
+instance Show Score  where
+  show (Score col pico) = "Score {genCol=" <> show col <> ", ms= " <> show (div pico (10^(9::Int))) <> "}"
+
+instance Semigroup Score where
+  Score l a <> Score r b = Score (l + r) (a + b)
+instance Monoid Score where
+  mempty = Score 0 0
+fromSubst :: Subst -> Score
+fromSubst s = Score (length s) 0
+fromPicoSeconds :: Integer -> Score
+fromPicoSeconds = Score 0
 

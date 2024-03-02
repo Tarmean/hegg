@@ -253,9 +253,21 @@ rebuild (EGraph uf cls mm wl awl) =
   in
   -- Loop until worklist is completely empty
   if null (worklist egr'') && null (analysisWorklist egr'')
-     then egr''
+     then normClasses egr''
      else rebuild egr'' -- ROMES:TODO: Doesn't seem to be needed at all in the testsuite.
+
+
 {-# INLINEABLE rebuild #-}
+
+normClasses :: (Language l) => EGraph a l -> EGraph a l
+normClasses (EGraph uf clss mm wl awl)= EGraph uf clss' mm wl awl
+  where
+    clss' =  IM.map  upClass (IM.filterWithKey isCanonical clss)
+    isCanonical k _ = k == findRepr k uf
+    upClass (EClass cid ns ana parents) = EClass cid (upNodeSet ns) ana parents
+    upNodeSet nodeSet = S.map (Node . fmap upId . unNode) nodeSet
+    upId ident = findRepr ident uf
+
 
 -- ROMES:TODO: find repair_id could be shared between repair and repairAnal?
 

@@ -2,8 +2,12 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module T3 where
 
+import GHC.Generics
+import Data.Hashable (Hashable)
 -- Some e-graph unit tests
 
 import Prelude hiding (not)
@@ -18,7 +22,7 @@ data Lang a = And a a
             | Not a
             | ToElim a
             | Sym Int
-            deriving (Functor, Foldable, Traversable, Eq, Ord, Show)
+            deriving (Functor, Foldable, Traversable, Eq, Ord, Show, Generic, Hashable)
 
 main :: IO ()
 main = do

@@ -64,10 +64,19 @@ import Data.Equality.Extraction
 
 import Data.Equality.Saturation.Rewrites
 import Data.Equality.Saturation.Scheduler
+import qualified Data.Equality.Compiler.RuleCompilation as Compile
+import Control.Monad.State (put)
+import qualified Data.Equality.Compiler.RuleCompilation as Comp
+import GHC.Stack (HasCallStack)
+import Debug.Trace (trace, traceM)
+import qualified Data.Set as S
+import qualified Data.Equality.Compiler.Index as Idx
+import Control.Monad.Trans.State (runState)
+import qualified Data.Equality.Compiler.QueryExecution as Exec
 
 -- | Equality saturation with defaults
 equalitySaturation :: forall a l cost
-                    . (Analysis a l, Language l, Ord cost)
+                    . (HasCallStack, Show (l Int) ,Analysis a l, Language l, Ord cost)
                    => Fix l               -- ^ Expression to run equality saturation on
                    -> [Rewrite a l]         -- ^ List of rewrite rules
                    -> CostFunction l cost -- ^ Cost function to extract the best equivalent representation
@@ -80,7 +89,7 @@ equalitySaturation = equalitySaturation' defaultBackoffScheduler
 --
 -- This variant takes all arguments instead of using defaults
 equalitySaturation' :: forall a l schd cost
-                    . (Analysis a l, Language l, Scheduler schd, Ord cost)
+                    . (HasCallStack, Show (l Int), Analysis a l, Language l, Scheduler schd, Ord cost)
                     => schd                -- ^ Scheduler to use
                     -> Fix l               -- ^ Expression to run equality saturation on
                     -> [Rewrite a l]       -- ^ List of rewrite rules
@@ -92,11 +101,47 @@ equalitySaturation' schd expr rewrites cost = egraph $ do
     origClass <- represent expr
 
     -- Run equality saturation (by applying non-destructively all rewrites)
-    runEqualitySaturation schd rewrites
+    runEqualitySaturationFast schd rewrites
 
     -- Extract best solution from the e-class of the original expression
     gets $ \g -> extractBest g cost origClass
 {-# INLINABLE equalitySaturation' #-}
+
+runEqualitySaturationFast :: forall a l schd
+                       . (HasCallStack, Analysis a l, Language l, Scheduler schd)
+                      => schd                -- ^ Scheduler to use
+                      -> [Rewrite a l]       -- ^ List of rewrite rules
+                      -> EGraphM a l ()
+runEqualitySaturationFast schd rewrites = runEqualitySaturation' 0 mempty 
+  where
+      rwMap = IM.fromList $ zip [0..] rewrites 
+
+      -- Take map each rewrite rule to stats on its usage so we can do
+      -- backoff scheduling. Each rewrite rule is assigned an integer
+      -- (corresponding to its position in the list of rewrite rules)
+      runEqualitySaturation' :: Int -> IM.IntMap (Stat schd) -> EGraphM a l ()
+      runEqualitySaturation' 5  _ = return () -- Stop after X iterations
+      runEqualitySaturation' i stats = do
+        eg <- get
+        -- traceM (simpEg eg)
+        let allTups = Idx.toAllTuples (classes eg)
+        scoreMap <- Exec.runRewrites allTups rwMap
+        let stats' = foldr (\(k, v::Score) acc -> updateStatsScore schd i k (acc IM.!? k) acc v) stats (IM.toList scoreMap)
+        rebuild
+       
+        let (beforeMemo, beforeClasses) = (eg^._memo, classes eg)
+        (afterMemo, afterClasses) <- gets (\g -> (g^._memo, classes g))
+        -- traceM (show (G.sizeNM afterMemo, IM.size afterClasses))
+        unless (G.sizeNM afterMemo == G.sizeNM beforeMemo
+                   && IM.size afterClasses == IM.size beforeClasses)
+           (runEqualitySaturation' (i+1) stats')
+simpEg :: (Show a, Show (l ClassId)) => EGraph a l -> String
+simpEg (eg :: EGraph a l) = unlines $ do
+    (pid, nodes) <- IM.toList (classes eg)
+    [ show pid <> " ~= "<> show(eClassData nodes) ] <> do
+        n <- S.toList $ G.eClassNodes nodes
+        pure $ show pid <> ":=" <> show (unNode n)
+
 
 
 -- | Run equality saturation on an e-graph by non-destructively applying all
@@ -127,11 +172,13 @@ runEqualitySaturation schd rewrites = runEqualitySaturation' 0 mempty where -- S
 
       -- Write-only phase, temporarily break invariants
       forM_ matches applyMatchesRhs
+      -- traceM (simpEg egr)
 
       -- Restore the invariants once per iteration
       rebuild
       
       (afterMemo, afterClasses) <- gets (\g -> (g^._memo, classes g))
+      -- traceM (show (G.sizeNM afterMemo, IM.size afterClasses))
 
       -- ROMES:TODO: Node limit...
       -- ROMES:TODO: Actual Timeout... not just iteration timeout
@@ -177,7 +224,7 @@ runEqualitySaturation schd rewrites = runEqualitySaturation' 0 mempty where -- S
               case IM.lookup v subst of
                 Nothing -> error "impossible: couldn't find v in subst"
                 Just n  -> do
-                    _ <- merge n eclass
+                    _ <- merge eclass n
                     return ()
 
           (_ := NonVariablePattern rhs, Match subst eclass) -> do

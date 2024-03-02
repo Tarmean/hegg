@@ -7,10 +7,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE CPP #-}
 module Sym where
 
 import GHC.Generics
+import Data.Hashable (Hashable)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -42,7 +44,7 @@ data Expr a = Sym   !String
             | BinOp !BOp !a !a
             deriving ( Eq, Ord, Show
                      , Functor, Foldable, Traversable
-                     , Generic
+                     , Generic, Hashable
                      )
 data BOp = Add
          | Sub
@@ -51,13 +53,13 @@ data BOp = Add
          | Pow
          | Diff
          | Integral
-        deriving (Eq, Ord, Show, Generic)
+        deriving (Eq, Ord, Show, Generic, Hashable)
 
 data UOp = Sin
          | Cos
          | Sqrt
          | Ln
-         deriving (Eq, Ord, Show, Generic)
+         deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance IsString (Fix Expr) where
     fromString = Fix . Sym
@@ -111,6 +113,8 @@ instance Analysis (Maybe Double) Expr where
     makeA = evalConstant
 
     -- joinA = (<|>)
+    joinA Nothing mb = mb
+    joinA mb Nothing = mb
     joinA ma mb = do
         a <- ma
         b <- mb

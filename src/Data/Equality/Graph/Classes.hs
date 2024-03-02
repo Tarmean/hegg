@@ -30,4 +30,3 @@ data EClass analysis_domain language = EClass
 
 instance (Show a, Show (l ClassId)) => Show (EClass a l) where
     show (EClass a b d (SList c _)) = "Id: " <> show a <> "\nNodes: " <> show b <> "\nParents: " <> show c <> "\nData: " <> show d
-

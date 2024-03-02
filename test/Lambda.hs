@@ -1,4 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -7,6 +9,8 @@
 {-# LANGUAGE DeriveTraversable #-}
 module Lambda where
 
+import GHC.Generics (Generic)
+import Data.Hashable (Hashable)
 import Data.String
 
 import Test.Tasty
@@ -43,7 +47,7 @@ data Lambda a
     | Let a a a
     | LFix a a
     deriving ( Eq, Ord, Show
-             , Functor, Foldable, Traversable
+             , Functor, Foldable, Traversable, Generic, Hashable
              )
 
 evalL :: Lambda (Maybe (Lambda ())) -> Maybe (Lambda ())

@@ -1,4 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -15,13 +17,15 @@ import Data.Equality.Saturation
 import Data.Equality.Analysis
 import Data.Equality.Graph
 import Data.Equality.Graph.Lens
+import GHC.Generics (Generic)
+import Data.Hashable (Hashable)
 
 data SymExpr a = Const Double
                | Symbol String
                | a :+: a
                | a :*: a
                | a :/: a
-               deriving (Functor, Foldable, Traversable, Eq, Ord, Show)
+               deriving (Functor, Foldable, Traversable, Eq, Ord, Show, Generic, Hashable)
 infix 6 :+:
 infix 7 :*:, :/:
 

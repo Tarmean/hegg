@@ -25,6 +25,7 @@ import Control.Monad (void)
 import qualified Data.Map.Strict as M
 
 import Data.Equality.Graph.Classes.Id
+import Data.Hashable (Hashable)
 
 
 -- * E-node
@@ -53,6 +54,7 @@ newtype Operator l = Operator { unOperator :: l () }
 deriving instance Eq (l ()) => (Eq (Operator l))
 deriving instance Ord (l ()) => (Ord (Operator l))
 deriving instance Show (l ()) => (Show (Operator l))
+deriving instance Hashable (l ()) => (Hashable (Operator l))
 
 -- | Get the operator (function symbol) of an e-node
 operator :: Traversable l => ENode l -> Operator l

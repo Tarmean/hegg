@@ -1,12 +1,16 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module T2 where
 
 -- Tests whether this saturates just like mwillsey claims that it does in egg!
 
 import Prelude hiding (not)
 
+import GHC.Generics
+import Data.Hashable (Hashable)
 import Test.Tasty.HUnit
 import Data.Equality.Matching
 import Data.Equality.Extraction
@@ -17,7 +21,7 @@ data Lang a = And a a
             | Not a
             | ToElim a
             | Sym Int
-            deriving (Functor, Foldable, Traversable, Eq, Ord, Show)
+            deriving (Functor, Foldable, Traversable, Eq, Ord, Show, Generic, Hashable)
 
 x, y :: Pattern Lang
 x = "x"

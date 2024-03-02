@@ -36,6 +36,7 @@ instance Language Expr
 module Data.Equality.Language where
 
 import Data.Kind
+import Data.Hashable (Hashable)
 
 -- | A 'Language' is the required constraint on /expressions/ that are to be
 -- represented in an e-graph.
@@ -46,6 +47,6 @@ import Data.Kind
 -- particular an 'Data.Equality.Analysis.Analysis' must be defined for the
 -- language.
 type Language :: (Type -> Type) -> Constraint
-class (∀ a. Ord a => Ord (l a), Traversable l) => Language l
-instance (∀ a. Ord a => Ord (l a), Traversable l) => Language l
+class (Hashable (l ()), ∀ a. Show a => Show (l a), ∀ a. Ord a => Ord (l a), Traversable l) => Language l
+instance (Hashable (l ()), ∀ a. Show a => Show (l a), ∀ a. Ord a => Ord (l a), Traversable l) => Language l
 

@@ -2,6 +2,7 @@
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,6 +11,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Invariants where
+
+import GHC.Generics
+import Data.Hashable (Hashable)
 
 import Test.Tasty
 import Test.Tasty.QuickCheck as QC hiding (classes)
@@ -36,13 +40,13 @@ import Sym
 -- TODO: Use type level symbol to define the analysis
 type role SimpleExpr nominal
 newtype SimpleExpr l = SE (Expr l)
-    deriving (Functor, Foldable, Traversable, Show, Eq, Ord)
+    deriving (Functor, Foldable, Traversable, Show, Eq, Ord, Generic, Hashable)
 
 -- | When a rewrite of type "x":=c where x is a pattern variable and c is a
 -- constant is used in equality saturation of any expression, all e-classes
 -- should be merged into a single one, since all classes are equal to c and
 -- therefore equivalent to themselves
-patFoldAllClasses :: forall l. (Language l, Num (Pattern l))
+patFoldAllClasses :: forall l. (Show (l Int), Language l, Num (Pattern l))
                   => Fix l -> Integer -> Bool
 patFoldAllClasses expr i =
     case IM.toList (classes eg) of
@@ -124,7 +128,7 @@ hashConsInvariant eg =
             Nothing -> error "how can we not find canonical thing in map? :)" -- False
             Just i' -> i' == find i eg 
 
-benchSaturate :: forall l. Language l
+benchSaturate :: forall l. (Show (l Int), Language l)
               => [Rewrite () l] -> (l Int -> Int) -> Fix l -> Bool
 benchSaturate rws cost expr =
     equalitySaturation expr rws cost `seq` True

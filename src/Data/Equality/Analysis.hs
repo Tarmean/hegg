@@ -40,7 +40,7 @@ import Data.Equality.Graph.Classes
 --
 -- The @domain@ is the type of the domain of the e-class analysis, that is, the
 -- type of the data stored in an e-class according to this e-class analysis
-class Eq domain => Analysis domain (l :: Type -> Type) where
+class (Show domain, Eq domain) => Analysis domain (l :: Type -> Type) where
 
     -- | When a new e-node is added into a new, singleton e-class, construct a
     -- new value of the domain to be associated with the new e-class, by

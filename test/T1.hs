@@ -3,9 +3,13 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 module T1 (main) where
 
+import GHC.Generics
+import Data.Hashable (Hashable)
 import Test.Tasty.HUnit
 
 import Data.Equality.Graph
@@ -20,7 +24,7 @@ data TreeF a = VarF Int
              | MulF a a
              | DivF a a
              | LogF a
-               deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+               deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic, Hashable)
 
 instance Num (Fix TreeF) where
   l + r = Fix $ AddF l r
