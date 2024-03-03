@@ -94,6 +94,13 @@ newtype ColumnSet = ColumnSet { unColumnSet :: VU.Vector Int}
   deriving (Eq, Ord, Show)
 newtype VarSet = VarSet { unVarSet :: VU.Vector Int}
   deriving (Eq, Ord, Show)
+
+-- FIXME!!!: These indexes could be polymorphic typeclass dicts.
+-- We really only need the basic iter+lookup operations.
+-- - For leafs, iter doesn't need the hashmap grouping (except for deduping maybe) and can be implemented with a simple vector 
+-- - We often have query plans [[0],[1],[2]] and [[0],[1,2]]. We could only build the first and implement lookup/iteration on top of it
+-- - We may want to extend to e.g. b-trees at some point, where "get" encodes a range query
+-- - For seminaive evaluation we may want to encode lazy union where getHM perm a (x,y) = (getHM perm a x, getHM perm a y), iterKeys perm var (x,y) = iterKeys perm var x <> iterKeys perm var y
 data HM = HM {
     -- flatStorage :: Storage,
     groupedChildren :: HM.HashMap TupleSlice HM,
@@ -120,6 +127,7 @@ hmSize = HM.size . groupedChildren
 
 -- | FIXME!!!!: This probably is the most performance sensitive piece
 -- in the query code and it concats lists atm
+-- Do this with unboxed mutable hashmaps from vector-hashtables. Still requires mutable vecs, grow-vector?
 groupChildren :: Storage -> ColumnSet -> (Storage -> HM) -> HM.HashMap TupleSlice HM
 groupChildren stor columns cont = HM.map (cont . toStorage) $ HM.fromListWith (<>) $ do
     let keyGetter = pickSlice columns

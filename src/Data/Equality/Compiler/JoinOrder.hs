@@ -1,8 +1,60 @@
+
+{- Join plan:
+  E-Matching is a select-project-join SQL query so we gotta do basic query optimization for performance.
+  We are an in-memory DB so hash joins would make sense. Previous work advocated generic joins, so this implements Free Joins which generalize both! We flatten a query
+ 
+      f(h(?A), h(?B), ?A)
+ 
+  into an egraph:
+ 
+      3 := Var("A")
+      0 := f(1,2,3)
+      1 := h(3)
+      4 := Var("B")
+      2 := h(4)
+
+ 
+  This gives us three constraints and two variable mappings.
+ 
+  For Constraints we flatten classid and arguments into flat tuples:
+  - X: f[0,1,2,3]
+  - Y: h[1,3]
+  - Z: h[2,4]
+  Var Mappings: {3: "A", 4: "B", 0: "$root"}
+ 
+  We split the constraints into a sequence which yields indices. E.g. if the sequence is:
+ 
+  [[1,2], [3], [0], [4]]
+ 
+  This would give the Indices:
+  - X: HashMap (Idx1, Idx2) (HashMap Idx3 (HashMap Idx0 ()))
+  - Y: HashMap Idx1 (HashMap Idx3 ())
+  - Z: HashMap Idx2 (HashMap Idx4 ())
+  and code (? skips current loop iteration on missing map entry):
+ 
+  for (v1, v2) in idxX.keys():
+      let idxX = idxX.get((v1,v2))?
+      let idxY = idxY.get((v1))?
+      let idxZ = idxY.get((v2))?
+      -- here we can dynamically loop over the smaller index
+      for (v3) in [idxX,idxY].minimum().keys():
+        let idxX = idxX.get((v3))?
+        let idxY = idxY.get((v3))?
+        for v0 in idxX.keys():
+          let idxX = idxX.get((v0))?
+          for v4 in idxZ.keys():
+            let idxZ = idxZ.get((v4))?
+            yield {"A": v3, "B": v4, "$root": v0} 
+
+Depending on the sequence and indexes we can do either hash joins, generic joins, or something in between.(:*:)
+
+This would mean building multiple indices for each query!!!!!
+To amortize this, we try to always use the same join order (naively smallest relation first) and share indices for all rewrite rules to amortize.
+ -}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 module Data.Equality.Compiler.JoinOrder where
@@ -15,13 +67,18 @@ import qualified Data.IntSet as IS
 import qualified Data.Vector as V
 import qualified Data.IntMap as IM
 import qualified Data.Set as S
-import Data.Equality.Compiler.RuleExecution (FExpr(..))
 import qualified Data.Map as M
 import qualified Data.Vector.Unboxed as VU
 import GHC.Generics (Generic)
 import Data.Hashable (Hashable)
 import GHC.Stack (HasCallStack)
 import Data.Equality.Compiler.Utils ((!!!))
+
+planQuery :: (E.Language f) => AllTuples f -> [Constraint f PId] -> QueryPlan f
+planQuery tupleData cstrs
+  | null metas = error ("Null metadata " <> show (cstrs, metas))
+  | otherwise = toQueryPlan (IM.map varBinding metas) $ toSlices $ getQueryOrder metas
+  where metas = metadatas tupleData cstrs
 
 ruleSize :: (E.Language f) => AllTuples f -> Constraint f PId -> Int
 ruleSize at (_ := cstr) = storageSize $ lookupStorage (E.operator $ E.Node cstr) at
@@ -31,7 +88,6 @@ smallestChoice [] = error "Nullary join, no constraints"
 smallestChoice xs = minimumBy (comparing tableSize) xs
 
 data Metadata f = Metadata { constraintId :: Int, theConstraint :: Constraint f PId, tableSize :: Int, usedSet :: IS.IntSet }
-  -- deriving (Eq, Ord, Show)
 deriving instance Eq (f Int) => Eq (Metadata f)
 deriving instance Ord (f Int) => Ord (Metadata f)
 deriving instance Show (f Int) => Show (Metadata f)
@@ -60,6 +116,7 @@ byContent ls = IM.fromListWith (<>) [ (lv, S.singleton l) | l <- ls, lv <- IS.to
 toSlices :: Ord (f Int) => [Metadata f] -> [ [ Slice f ]]
 toSlices [] = []
 toSlices md
+  -- TODO: Splitting the first slice if it is very large could help, moving from hashjoin into generic join
  -- | firstLarge && isSplittable = slice 
   = go md mempty
   where
@@ -73,7 +130,6 @@ toSlices md
     slicesFor newVars = map (slice newVars) (S.toList new)
       where
         new = foldMap (by !!!)  (IS.toList newVars)
-        -- totalVars = seen `S.union` new
     slice newVars x = Slice x (usedSet x `IS.intersection` newVars)
 
 
@@ -111,9 +167,6 @@ selectedIdx s = RelevantConstraintIds $ VU.fromList $ IS.toAscList $ IS.map (var
   where
     vars = IM.fromListWith (\ _ x -> x) $ zip (toList $ theConstraint $ sliceConstraint s) [0..]
 
-noTuples = AllTuples @FExpr mempty
-testData :: [Constraint FExpr PId]
-testData = [0 := Plus 1 2, 2 := Plus 3 3]
 
 metadatas :: E.Language f => AllTuples f -> [Constraint f PId] -> IM.IntMap (Metadata f)
 metadatas allT = IM.fromList . zipWith f [0..] . fmap (toMetadata allT)
@@ -149,11 +202,6 @@ toQueryPlan varBindings slices = QPlan indexes varBindings vars
 varBinding :: Foldable f => Metadata f -> Permutation ColumnSet VarSet
 varBinding = Permutation . VU.fromList . toList . theConstraint
 
-planQuery :: (E.Language f) => AllTuples f -> [Constraint f PId] -> QueryPlan f
-planQuery tupleData cstrs
-  | null metas = error ("Null metadata " <> show (cstrs, metas))
-  | otherwise = toQueryPlan (IM.map varBinding metas) $ toSlices $ getQueryOrder metas
-  where metas = metadatas tupleData cstrs
 
 buildIndex :: (E.Language f) => IndexPlan f -> AllTuples f -> HM
 buildIndex ip db = groupStorage (ColumnSet . VU.fromList . relevantIds <$> plan ip) (filtered base)

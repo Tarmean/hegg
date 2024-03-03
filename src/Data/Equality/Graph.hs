@@ -516,3 +516,72 @@ repairAnalM (repair_id, node) egr = do
        else
         return egr
 {-# INLINE repairAnalM #-}
+
+---- If the e-node is already represented in this e-graph, the class-id of the
+---- class it's already represented in will be returned.
+--addInto :: forall a l. (Analysis a l, Language l) => ENode l -> ClassId -> EGraph a l -> (ClassId, EGraph a l)
+--addInto uncanon_e parent egr =
+--    let !new_en = canonicalize uncanon_e egr
+
+--     in case lookupNM new_en (memo egr) of
+--      Just existing_class -> merge parent existing_class
+--      Nothing ->
+
+--        let
+
+--            -- Make new equivalence class with a new id in the union-find
+--            -- New singleton e-class stores the e-node and its analysis data
+--            new_eclass = EClass new_eclass_id (S.singleton new_en) (makeA @a ((\i -> egr^._class i._data @a) <$> unNode new_en)) mempty
+
+--            -- TODO:Performance: All updates can be done to the map first? Parallelize?
+--            --
+--            -- Update e-classes by going through all e-node children and adding
+--            -- to the e-class parents the new e-node and its e-class id
+--            --
+--            -- And add new e-class to existing e-classes
+--            new_parents      = ((new_eclass_id, new_en) |:)
+--            new_classes      = IM.insert new_eclass_id new_eclass $
+--                                    foldr  (IM.adjust (_parents %~ new_parents))
+--                                           (classes egr)
+--                                           (unNode new_en)
+
+--            -- TODO: From egg: Is this needed?
+--            -- This is required if we want math pruning to work. Unfortunately, it
+--            -- also makes the invariants tests x4 slower (because they aren't using
+--            -- analysis) I think there might be another way to ensure math analysis
+--            -- pruning to work without having this line here.  Comment it out to
+--            -- check the result on the unit tests.
+--            -- 
+--            -- Update: I found a fix for that case: the modifyA function must add
+--            -- the parents of the pruned class to the worklist for them to be
+--            -- upward merged. I think it's a good compromise for requiring the user
+--            -- to do this. Adding the added node to the worklist everytime creates
+--            -- too much unnecessary work.
+--            --
+--            -- Actually I've found more bugs regarding this, and can't fix them
+--            -- there, so indeed this seems to be necessary for sanity with 'modifyA'
+--            --
+--            -- This way we also liberate the user from caring about the worklist
+--            --
+--            -- The hash cons invariants test suffer from this greatly but the
+--            -- saturation tests seem mostly fine?
+--            --
+--            -- And adding to the analysis worklist doesn't work, so maybe it's
+--            -- something else?
+--            --
+--            -- So in the end, we do need to addToWorklist to get correct results
+--            new_worklist     = (new_eclass_id, new_en):worklist egr
+
+--            -- Add the e-node's e-class id at the e-node's id
+--            new_memo         = insertNM new_en new_eclass_id (memo egr)
+
+--         in ( new_eclass_id
+--            , egr { unionFind = new_uf
+--                  , classes   = new_classes
+--                  , worklist  = new_worklist
+--                  , memo      = new_memo
+--                  }
+--                  -- Modify created node according to analysis
+--                  & modifyA new_eclass_id
+--            )
+--{-# INLINABLE add #-}

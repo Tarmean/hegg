@@ -7,6 +7,7 @@
 module Data.Equality.Compiler.QueryExecution where
 import qualified Data.HashMap.Internal.Strict as HM
 import Data.Equality.Compiler.JoinOrder
+import Debug.Trace (trace)
 import Data.Equality.Compiler.Index
 import Data.Equality.Graph (ClassId)
 import qualified Data.IntMap as IM
@@ -68,8 +69,7 @@ bestSource sp indices
   | otherwise = VU.minimumOn (\idx -> hmSize (indices !!! idx)) (sourceCandidates sp)
 genQueryPlan :: (E.Language l) => AllTuples l -> [(Pattern l, Pattern l)] -> (VarMap, QueryPlan l)
 genQueryPlan db pats
-  -- | trace (show (pats, constraints, if null constraints then Nothing else Just plan)) False = undefined
-  | null constraints = (varMap, AllClasses (IS.fromList $ IM.elems varMap))
+  | null constraints = (varMap, AllClasses (IS.fromList $ IM.elems varMap)) -- Contains no NonVariablePattern
   | otherwise = (varMap, qPlan)
   where
     qPlan = planQuery db constraints
@@ -77,7 +77,9 @@ genQueryPlan db pats
 
 data Indices f = Indices{ allClasses :: VU.Vector Int, allIndices :: HM.HashMap (IndexPlan f) HM } 
 buildIndices :: E.Language f => S.Set (IndexPlan f) -> AllTuples f -> Indices f
-buildIndices s db = Indices (dbClasses db) $ HM.fromList $ do
+buildIndices s db 
+  | trace (show s) False = undefined
+  | otherwise = Indices (dbClasses db) $ HM.fromList $ do
    ix <- S.toList s
    pure (ix, buildIndex ix db)
 
@@ -100,7 +102,7 @@ toApplier lhs rhs conditions varToCompact = \compactToClass -> do
     eg <- get
     if and [cond subst eg |cond <- conditions] then do
       -- traceM ("Applying " ++ show root <> "@("<> show (mapPat (subst !!!)lhs)  ++ ") => " ++ show (mapPat (subst !!!)rhs))
-      n <- toNode (subst !!!) rhs
+      n <- resolveNode (subst !!!) rhs
       void $ state (E.merge root n)
       pure $ Score.fromSubst subst
     else pure mempty
@@ -109,6 +111,6 @@ mapPat :: (Functor lang)=> (P.Var -> ClassId) -> Pattern lang -> Pattern lang
 mapPat f (VariablePattern i) = VariablePattern (f i)
 mapPat f (NonVariablePattern r) = NonVariablePattern (fmap (mapPat f) r)
 
-toNode :: (A.Analysis ana lang, E.Language lang, MonadState (E.EGraph ana lang) m)=> (P.Var -> ClassId) -> Pattern lang -> m ClassId
-toNode f (VariablePattern v) = pure (f v)
-toNode f (NonVariablePattern v) = state . (E.add . E.Node ) =<< traverse (toNode f) v
+resolveNode :: (A.Analysis ana lang, E.Language lang, MonadState (E.EGraph ana lang) m)=> (P.Var -> ClassId) -> Pattern lang -> m ClassId
+resolveNode f (VariablePattern v) = pure (f v)
+resolveNode f (NonVariablePattern v) = state . (E.add . E.Node ) =<< traverse (resolveNode f) v

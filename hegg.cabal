@@ -90,11 +90,8 @@ library
                       Data.Equality.Utils,
                       Data.Equality.Utils.SizedList,
                       Data.Equality.Compiler.RuleCompilation,
-                      Data.Equality.Compiler.RuleEnv,
                       Data.Equality.Compiler.Utils,
                       Data.Equality.Compiler.PlanStep,
-                      Data.Equality.Compiler.RuleExecution,
-                      Data.Equality.Compiler.RuleOrdering,
                       Data.Equality.Compiler.Index,
                       Data.Equality.Compiler.JoinOrder,
                       Data.Equality.Compiler.QueryExecution
