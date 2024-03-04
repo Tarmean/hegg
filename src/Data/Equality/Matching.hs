@@ -38,6 +38,7 @@ data Match = Match
     { matchSubst :: !Subst
     , matchClassId :: {-# UNPACK #-} !ClassId
     }
+    deriving (Eq, Ord, Show)
 
 -- TODO: Perhaps e-graph could carry database and rebuild it on rebuild
 
@@ -64,7 +65,7 @@ ematch db patr =
         f s = if IM.null s then Nothing
                            else case IM.lookup root s of
                                   Nothing -> error "how is root not in map?"
-                                  Just found -> pure (Match s found)
+                                  Just found -> pure (Match (IM.filterWithKey (const . (> 100)) s) found)
 
      in mapMaybe f (genericJoin db q)
 

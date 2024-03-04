@@ -94,7 +94,8 @@ library
                       Data.Equality.Compiler.PlanStep,
                       Data.Equality.Compiler.Index,
                       Data.Equality.Compiler.JoinOrder,
-                      Data.Equality.Compiler.QueryExecution
+                      Data.Equality.Compiler.QueryExecution,
+                      Data.Equality.Compiler.API
     if impl(ghc >= 9.2)
         exposed-modules: Data.Equality.Utils.IntToIntMap
 

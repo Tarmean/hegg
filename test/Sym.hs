@@ -121,7 +121,7 @@ instance Analysis (Maybe Double) Expr where
         -- this assertion only seemed to be triggering when using bogus
         -- constant assignments for "Fold all classes with x:=c"
         -- 0 bug found by property checking
-        !_ <- unless (a == b || (a == 0 && b == (-0)) || (a == (-0) && b == 0)) (error "Merged non-equal constants!")
+        !_ <- unless (a == b || (a == 0 && b == (-0)) || (a == (-0) && b == 0)) (error $ "Merged non-equal constants! " <> show (a,b))
         return a
 
     modifyA cl eg0
@@ -159,8 +159,10 @@ unsafeGetSubst (VariablePattern v) subst = case IM.lookup v subst of
       Just class_id -> class_id
 
 is_not_zero :: Pattern Expr -> RewriteCondition (Maybe Double) Expr
-is_not_zero v subst egr =
-    egr^._class (unsafeGetSubst v subst)._data /= Just 0
+is_not_zero v subst egr = case
+    egr^._class (unsafeGetSubst v subst)._data of
+    Nothing -> False
+    Just x -> x /= 0
 
 is_sym :: Pattern Expr -> RewriteCondition (Maybe Double) Expr
 is_sym v subst egr =

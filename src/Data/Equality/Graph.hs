@@ -71,6 +71,7 @@ import Data.Equality.Language
 import Data.Equality.Graph.Lens
 
 import Data.Equality.Utils
+import Debug.Trace (trace)
 
 -- ROMES:TODO: join things built in paralell?
 -- instance Ord1 l => Semigroup (EGraph l) where
@@ -182,12 +183,15 @@ merge a b egr0 =
            -- Make leader the leader in the union find
            (new_id, new_uf) = unionSets leader sub (unionFind egr0)
                                 & first (\n -> assert (leader == n) n)
+           upId i = if  i == sub then leader else i
+             -- Update parents of the sub class to point to
+           oldNodes = S.map (Node . fmap upId . unNode) (sub_class^._nodes)
 
            -- Update leader class with all e-nodes and parents from the
            -- subsumed class
            updatedLeader = leader_class
                              & _parents %~ (sub_class^._parents <>)
-                             & _nodes   %~ (sub_class^._nodes <>)
+                             & _nodes   %~ (oldNodes <>)
                              & _data    .~ new_data
 
            new_data = joinA @a @l (leader_class^._data) (sub_class^._data)
@@ -253,7 +257,7 @@ rebuild (EGraph uf cls mm wl awl) =
   in
   -- Loop until worklist is completely empty
   if null (worklist egr'') && null (analysisWorklist egr'')
-     then normClasses egr''
+     then egr''
      else rebuild egr'' -- ROMES:TODO: Doesn't seem to be needed at all in the testsuite.
 
 

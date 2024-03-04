@@ -61,7 +61,7 @@ module Data.Equality.Compiler.JoinOrder where
 import Data.Equality.Compiler.Index
 import Data.Equality.Compiler.PlanStep
 import qualified Data.Equality.Graph as E
-import Data.Foldable (minimumBy, toList)
+import Data.Foldable (minimumBy, toList, foldl')
 import Data.Ord (comparing)
 import qualified Data.IntSet as IS
 import qualified Data.Vector as V
@@ -73,11 +73,14 @@ import GHC.Generics (Generic)
 import Data.Hashable (Hashable)
 import GHC.Stack (HasCallStack)
 import Data.Equality.Compiler.Utils ((!!!))
+import Data.Function (on)
+import Data.List (sortBy, group)
 
 planQuery :: (E.Language f) => AllTuples f -> [Constraint f PId] -> QueryPlan f
 planQuery tupleData cstrs
   | null metas = error ("Null metadata " <> show (cstrs, metas))
-  | otherwise = toQueryPlan (IM.map varBinding metas) $ toSlices $ getQueryOrder metas
+  -- | otherwise = toQueryPlan (IM.map varBinding metas) $ toSlices (map usedSet $ getQueryOrder metas) (IM.elems metas)
+  | otherwise = toQueryPlan (IM.map varBinding metas) $ toSlices (IS.singleton <$> orderedVarsInQuery (IM.elems metas)) (IM.elems metas)
   where metas = metadatas tupleData cstrs
 
 ruleSize :: (E.Language f) => AllTuples f -> Constraint f PId -> Int
@@ -113,27 +116,31 @@ getQueryOrder im0 = useNext (smallestChoice (IM.elems im0)) mempty mempty im0
 
 byContent :: Ord (f Int) => [Metadata f] -> IM.IntMap (S.Set (Metadata f))
 byContent ls = IM.fromListWith (<>) [ (lv, S.singleton l) | l <- ls, lv <- IS.toList (usedSet l) ]
-toSlices :: Ord (f Int) => [Metadata f] -> [ [ Slice f ]]
-toSlices [] = []
-toSlices md
+toSlices :: Ord (f Int) => [IS.IntSet] -> [Metadata f] -> [ [ Slice f ]]
+toSlices [] _ = []
+toSlices vars md
   -- TODO: Splitting the first slice if it is very large could help, moving from hashjoin into generic join
  -- | firstLarge && isSplittable = slice 
-  = go md mempty
+  = go vars mempty
   where
     by = byContent md
-    go (x:xs) seen
-      | not(IS.null newVars) = slicesFor newVars : go xs (IS.union seen newVars)
-      | otherwise = go xs seen
+    go (v:vs) seen
+      | not (IS.null newVars) = joins : go vs (IS.union seen newVars')
+      | otherwise = go vs seen
       where
-        newVars = usedSet x `IS.difference` seen
+        (newVars', joins) = slicesFor newVars seen
+        newVars = v `IS.difference` seen
     go [] _seen = []
-    slicesFor newVars = map (slice newVars) (S.toList new)
+    slicesFor newVars seen = (candidateVars, map (slice candidateVars) (S.toList relevantJoins))
       where
-        new = foldMap (by !!!)  (IS.toList newVars)
+        candidateVars = IS.union newVars $ intersectionMap usedSet (S.toList relevantJoins) `IS.difference` seen
+
+        intersectionMap f ls = foldl1 IS.intersection $ map f ls
+        relevantJoins = foldMap (by !!!)  (IS.toList newVars)
     slice newVars x = Slice x (usedSet x `IS.intersection` newVars)
 
 
-newtype RelevantConstraintIds = RelevantConstraintIds(VU.Vector Int) 
+newtype RelevantConstraintIds = RelevantConstraintIds(VU.Vector Int)
   deriving (Eq, Ord, Show)
   deriving Hashable via TupleSlice
 
@@ -210,3 +217,15 @@ buildIndex ip db = groupStorage (ColumnSet . VU.fromList . relevantIds <$> plan 
    filtered
      | V.null (unFilterSet $ filtering ip) = id
      | otherwise = filterStorage (filtering ip)
+
+orderedVarsInQuery :: (Functor lang, Foldable lang) => [Metadata lang] -> [PId]
+orderedVarsInQuery metas = map head $ group $ sortBy (compare `on` varCost) $ foldMap (toList . theConstraint) metas
+    where
+        -- First, prioritize variables that occur in many relations; second,
+        -- prioritize variables that occur in small relations
+        varCost :: PId -> Int
+        varCost v = sum $ map(\a -> length a - 100) $ filter (elem v) $ map theConstraint metas
+        {-# INLINE varCost #-}
+
+
+
