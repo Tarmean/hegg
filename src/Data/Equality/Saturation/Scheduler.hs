@@ -92,7 +92,7 @@ instance Scheduler BackoffScheduler where
             Nothing -> Just (BSS (i + ban_length) 1 s)
             Just (BSS _ n o)  -> Just (BSS (i + ban_length) (n+1) (o <> s))
 
-    isBanned i s = False -- i < bannedUntil s
+    isBanned i s = i < bannedUntil s
 
 updateStats :: (Foldable t, Scheduler s) => s -> Int -> Int -> Maybe (Stat s) -> IM.IntMap (Stat s) -> t Match -> IM.IntMap (Stat s)
 updateStats bos i rw currentStat stats matches = updateStatsScore  bos i rw currentStat stats totalLen

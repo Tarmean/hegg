@@ -145,15 +145,16 @@ add uncanon_e egr =
 
             -- Add the e-node's e-class id at the e-node's id
             new_memo         = insertNM new_en new_eclass_id (memo egr)
-
-         in ( new_eclass_id
-            , egr { unionFind = new_uf
-                  , classes   = new_classes
-                  , worklist  = new_worklist
-                  , memo      = new_memo
-                  }
-                  -- Modify created node according to analysis
+            egr' = egr { unionFind = new_uf
+                              , classes   = new_classes
+                              , worklist  = new_worklist
+                              , memo      = new_memo
+                              }
+                              -- Modify created node according to analysis
                   & modifyA new_eclass_id
+
+         in ( find new_eclass_id egr'
+            , egr'
             )
 {-# INLINABLE add #-}
 

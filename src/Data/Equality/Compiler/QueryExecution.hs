@@ -28,12 +28,32 @@ import Data.Equality.Compiler.Utils ((!!!))
 import qualified Data.IntSet as IS
 import qualified Data.Equality.Compiler.API as API
 import Debug.Trace (traceM)
+import Data.Semigroup (Endo(..))
+import Control.Monad.Writer.CPS
+import Control.Monad (forM_)
+import Data.Functor.Identity
 
 {-# INLINE runRewrites #-}
-runRewrites :: forall lang. (L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> IM.IntMap [ P.Subst ]
+runRewrites :: forall lang . (L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> (IM.IntMap [ P.Subst ])
 runRewrites db rw = 
-   flip IM.map plans $ \(toPat, queryPlan) -> do
-      toPat <$> executeQuery queryPlan indices
+   runIdentity $ runRewritesM db rw write getAll 
+  where
+   write _ x = tell (Endo (x:))
+getAll :: (Monoid r, Monad m) => WriterT (Endo r) m () -> m r
+getAll = fmap (flip appEndo mempty) . execWriterT
+
+{-# INLINE runRewritesM_ #-}
+runRewritesM_ :: (Monoid r, Monad m, L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> IM.IntMap (P.Subst -> m r) -> m (IM.IntMap r)
+runRewritesM_ db rw conts = runRewritesM db rw app execWriterT
+  where
+    app idx v = tell =<< lift ((conts IM.! idx) v)
+
+{-# INLINE runRewritesM #-}
+runRewritesM :: (Monad m, Monad n, L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> (Int -> P.Subst -> m ()) -> (m () -> n r) -> n (IM.IntMap r)
+runRewritesM db rw cont finalize =
+   flip IM.traverseWithKey plans $ \k (toPat, queryPlan) ->
+     finalize $
+       forM_ (executeQuery queryPlan indices) (cont k . toPat)
   where
    plans = planQueries db rw
    reqIndices = S.fromList $ concatMap (IM.elems . usedIndexes . snd) (IM.elems plans)
