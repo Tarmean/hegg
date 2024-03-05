@@ -42,7 +42,7 @@ module Data.Equality.Saturation
       -- 'Language' must be given in its base functor form
     , Fix(..), cata
 
-    , simpEg, toStr
+    , simpEg
     ) where
 
 import qualified Data.IntMap.Strict as IM
@@ -72,6 +72,7 @@ import qualified Data.Equality.Compiler.Index as Idx
 import qualified Data.Equality.Compiler.QueryExecution as Exec
 import qualified Data.Equality.Compiler.API as API
 import qualified Control.Monad.State as M
+import Debug.Trace (traceM)
 
 -- | Equality saturation with defaults
 equalitySaturation :: forall a l cost
@@ -116,7 +117,7 @@ runEqualitySaturation2 schd rewrites = runEqualitySaturationAPI schd checkDone (
   where
       toPat (l :| r) = toPat l API..| r
       toPat (l := (r::Pattern l)) = l API..== r
-      checkDone i = pure (i >= 10)
+      checkDone i = pure (i >= 30)
 
 {-# INLINE runEqualitySaturationAPI#-}
 runEqualitySaturationAPI :: forall a l schd
@@ -150,6 +151,9 @@ runEqualitySaturationAPI schd isDone rewrites = runEqualitySaturation' 0 mempty
             eg <- get
             let allTups = Idx.toAllTuples (classes eg)
             let isActive ix _ =  maybe True (not . isBanned epoch) (IM.lookup ix stats) 
+            traceM . simpEg =<< get
+
+            -- traceM (unlines $ map toStr matches)
             scoreMap <- Exec.runRewritesM_ allTups (IM.filterWithKey isActive queries) appliers
 
 
@@ -163,18 +167,18 @@ runEqualitySaturationAPI schd isDone rewrites = runEqualitySaturation' 0 mempty
                        && IM.size afterClasses == IM.size beforeClasses)
                (runEqualitySaturation' (epoch+1) stats')
 
-toStr :: Language l => (Rewrite a l, Match) -> String
-toStr (rw, Match m cid) = show cid <> ": " <> show (sub l0) <> " => " <> show (sub r0) <> cond
-  where
-    sub (VariablePattern vp) = VariablePattern (m IM.! vp)
-    sub (NonVariablePattern o) = NonVariablePattern $ fmap sub o
-    cond = case conds of
-      [] -> ""
-      ls -> " (" <> show (length ls) <> " conditions)"
+-- toStr :: Language l => (Rewrite a l, Match) -> String
+-- toStr (rw, Match m cid) = show cid <> ": " <> show (sub l0) <> " => " <> show (sub r0) <> cond
+--   where
+--     sub (VariablePattern vp) = VariablePattern (m IM.! vp)
+--     sub (NonVariablePattern o) = NonVariablePattern $ fmap sub o
+--     cond = case conds of
+--       [] -> ""
+--       ls -> " (" <> show (length ls) <> " conditions)"
 
-    (l0,r0,conds) = split rw []
-    split (l :| p) acc = split l (p:acc)
-    split (l := r) acc = (l,r,acc)
+--     (l0,r0,conds) = split rw []
+--     split (l :| p) acc = split l (p:acc)
+--     split (l := r) acc = (l,r,acc)
 -- {-# INLINE runEqualitySaturationFast#-}
 -- runEqualitySaturationFast :: forall a l schd
 --                        . (HasCallStack, Analysis a l, Language l, Scheduler schd)
