@@ -126,7 +126,7 @@ runEqualitySaturation2 schd rewrites = runEqualitySaturation' 0 mempty
       -- backoff scheduling. Each rewrite rule is assigned an integer
       -- (corresponding to its position in the list of rewrite rules)
       runEqualitySaturation' :: Int -> IM.IntMap (Stat schd) -> EGraphM a l ()
-      runEqualitySaturation' 5 _ = pure ()
+      runEqualitySaturation' 8 _ = pure ()
       runEqualitySaturation' epoch stats = do
             eg <- get
             let allTups = Idx.toAllTuples (classes eg)
@@ -144,14 +144,14 @@ runEqualitySaturation2 schd rewrites = runEqualitySaturation' 0 mempty
                     pure (fmap (lhs,) matches', newStats)
 
             -- let stats' = foldr (\(k, v::Score) acc -> updateStatsScore schd epoch k (acc IM.!? k) acc v) stats (IM.toList matches)
-            traceM ("Epoch " <> show (epoch, G.sizeNM (eg ^. _memo), IM.size (classes eg)))
-            traceM . show =<< get
-            traceM . simpEg =<< get
-            traceM (unlines $ map show matches)
+            -- traceM ("Epoch " <> show (epoch, G.sizeNM (eg ^. _memo), IM.size (classes eg)))
+            -- traceM . show =<< get
+            -- traceM . simpEg =<< get
+            -- traceM (unlines $ map show matches)
             forM_ matches $ \(lhs, subst) -> do 
                     applyMatchesRhs (lhs, subst) 
-            traceM "Pre rebuild:"
-            traceM . show =<< get
+            -- traceM "Pre rebuild:"
+            -- traceM . show =<< get
            
             rebuild
             -- traceM . simpEg =<< get

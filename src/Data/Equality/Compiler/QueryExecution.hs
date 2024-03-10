@@ -43,26 +43,30 @@ runRewrites db rw =
 {-# INLINABLE executeQuery #-}
 executeQuery :: E.Language f => QueryPlan f -> Indices f -> [P.Subst]
 executeQuery (AllClasses is) (Indices ls _) = [IM.fromList [ (var, cid) |var <- IS.toList is ] | cid <- VU.toList ls]
-executeQuery query indices = go ixs0 (_queryOrder query) mempty
+executeQuery query indices = go indexRoots (_queryOrder query) mempty
   where
-   ixs0 = IM.map (allIndices indices HM.!) (usedIndexes query)
+   indexRoots = IM.map (allIndices indices HM.!) (usedIndexes query)
+   idToVarOrder key = _varMappings query  !!! key
    -- Each level:
    -- - Iterate over keys from some source, which give us new substitutions
    -- - Lookup those substitutions in all indices which overlap. This moves us one level down in those trees
    -- We dynamically pick the source from the smallest index which covers all needed variables for this level
    go :: IM.IntMap HM -> [StepPlan] -> IM.IntMap ClassId -> [ IM.IntMap ClassId ]
-   go _idxs [] subst = pure subst
-   go idxs (l:ls) subst = do
-      newSubst <- iterKeys (_varMappings query !!! x) (idxs !!! x)
+   go _ [] subst = pure subst
+   go indexes (step:steps) subst = do
       let
-        nextIndexLevel ixKey  = case getIndex (_varMappings query !!! ixKey) newSubst (idxs !!! ixKey) of
+        idToIndex key = indexes !!! key
+        indexChild key ixId  = case getIndex (idToVarOrder ixId) key (idToIndex ixId) of
           Nothing -> Nothing
-          Just newIndex -> Just (ixKey,newIndex)
-      case traverse nextIndexLevel (VU.toList $ affectedIds l) of
-         Just m' -> go (IM.fromList m' <> idxs) ls (newSubst <> subst)
+          Just newIndex -> Just (ixId,newIndex)
+
+        nextIndexId = bestSource step indexes
+
+      newSubst <- iterKeys (idToVarOrder nextIndexId) (idToIndex nextIndexId)
+
+      case traverse (indexChild newSubst) (VU.toList $ affectedIds step) of
+         Just indexes' -> go (IM.fromList indexes' <> indexes) steps (newSubst <> subst)
          Nothing -> empty
-     where
-       x = bestSource l idxs
 bestSource :: HasCallStack => StepPlan -> IM.IntMap HM -> Int
 bestSource sp indices
   | VU.null (sourceCandidates sp) = error "bestSource: No source candidates"
