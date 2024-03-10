@@ -112,7 +112,7 @@ runEqualitySaturation schd rewrites = runEqualitySaturation' 0 mempty where -- S
   -- backoff scheduling. Each rewrite rule is assigned an integer
   -- (corresponding to its position in the list of rewrite rules)
   runEqualitySaturation' :: Int -> IM.IntMap (Stat schd) -> EGraphM a l ()
-  runEqualitySaturation' 30 _ = return () -- Stop after X iterations
+  runEqualitySaturation' 8 _ = return () -- Stop after X iterations
   runEqualitySaturation' i stats = do
 
       egr <- get

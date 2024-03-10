@@ -90,5 +90,5 @@ instance Scheduler BackoffScheduler where
             Nothing -> Just (BSS (i + ban_length) 1)
             Just (BSS _ n)  -> Just (BSS (i + ban_length) (n+1))
 
-    isBanned i s = i < bannedUntil s
+    isBanned i s = False -- i < bannedUntil s
 

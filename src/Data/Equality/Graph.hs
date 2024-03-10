@@ -71,6 +71,7 @@ import Data.Equality.Language
 import Data.Equality.Graph.Lens
 
 import Data.Equality.Utils
+import qualified Data.Map as M
 
 -- ROMES:TODO: join things built in paralell?
 -- instance Ord1 l => Semigroup (EGraph l) where
@@ -231,7 +232,7 @@ merge a b egr0 =
 
         in (new_id, egr1)
 {-# INLINEABLE merge #-}
-            
+
 
 -- | The rebuild operation processes the e-graph's current worklist,
 -- restoring the invariants of deduplication and congruence. Rebuilding is
@@ -256,6 +257,19 @@ rebuild (EGraph uf cls mm wl awl) =
      then egr''
      else rebuild egr'' -- ROMES:TODO: Doesn't seem to be needed at all in the testsuite.
 {-# INLINEABLE rebuild #-}
+
+normClasses :: (Language l) => EGraph a l -> EGraph a l
+normClasses (EGraph uf clss mm wl awl)= EGraph uf clss mm' wl awl
+  where
+    isCanonical k = k == findRepr k uf
+    isCanonicalNode = all isCanonical . unNode
+    mm' = NodeMap $ M.filterWithKey (const . isCanonicalNode) $ unNodeMap mm
+
+    -- upClass (EClass cid ns ana parents) = EClass cid (upNodeSet ns) ana parents
+    -- clss' =  IM.map  upClass (IM.filterWithKey (const . isCanonical) clss)
+    -- upId ident = findRepr ident uf
+    -- upNodeSet = S.map (Node . fmap upId . unNode)
+
 
 -- ROMES:TODO: find repair_id could be shared between repair and repairAnal?
 
@@ -493,7 +507,7 @@ repairAnalM (repair_id, node) egr = do
   -- Canonical implementation is repairAnal, this is just the monadic variant of it
     let c = egr^._class repair_id
 
-    new_data <- AM.joinA @m @a @l (c^._data) =<< AM.makeA @m @a ((\i -> egr^._class i^._data @a) <$> unNode node)
+    new_data <- AM.joinA @m @a @l (c^._data) =<< AM.makeA @m @a ((\i -> egr^._class i^._data @a) <$> unNode node)
 
     if c^._data /= new_data
        then
