@@ -133,6 +133,8 @@ instance Analysis (Maybe Double) Expr where
                 (rep, eg2)  = merge cl new_c eg1
                 -- Prune all except leaf e-nodes
              in eg2 & _class rep._nodes %~ S.filter (F.null .unNode)
+    isSimplifier (Const _) = True
+    isSimplifier _ = False
 
 
 evalConstant :: Expr (Maybe Double) -> Maybe Double

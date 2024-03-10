@@ -24,7 +24,7 @@
 module Data.Equality.Saturation
     (
       -- * Equality saturation
-      equalitySaturation, equalitySaturation', runEqualitySaturation
+      equalitySaturation, equalitySaturation', runEqualitySaturation, runEqualitySaturationAPI
 
       -- * Re-exports for equality saturation
 
@@ -42,6 +42,7 @@ module Data.Equality.Saturation
       -- 'Language' must be given in its base functor form
     , Fix(..), cata
 
+    , simpEg
     ) where
 
 import qualified Data.IntMap.Strict as IM
@@ -72,8 +73,6 @@ import qualified Data.Equality.Compiler.QueryExecution as Exec
 import qualified Data.Equality.Compiler.API as API
 import qualified Control.Monad.State as M
 import Debug.Trace (traceM)
-import qualified Data.Equality.Saturation.Scheduler as Score
-import Data.Equality.Compiler.RuleCompilation (_MAGIC_ROOT_INT, _MAGIC_ROOT)
 
 -- | Equality saturation with defaults
 equalitySaturation :: forall a l cost
@@ -114,54 +113,72 @@ runEqualitySaturation2 :: forall a l schd
                       => schd                -- ^ Scheduler to use
                       -> [Rewrite a l]       -- ^ List of rewrite rules
                       -> EGraphM a l ()
-runEqualitySaturation2 schd rewrites = runEqualitySaturation' 0 mempty 
+runEqualitySaturation2 schd rewrites = runEqualitySaturationAPI schd checkDone (fmap toPat rewrites)
+  where
+      toPat (l :| r) = toPat l API..| r
+      toPat (l := (r::Pattern l)) = l API..== r
+      checkDone i = pure (i >= 8)
+
+{-# INLINE runEqualitySaturationAPI#-}
+runEqualitySaturationAPI :: forall a l schd
+                       . (Analysis a l, Language l, Scheduler schd)
+                      => schd                -- ^ Scheduler to use
+                      -> (Int -> EGraphM a l Bool)  
+                      -> [API.Rule l (EGraphM a l)]       -- ^ List of rewrite rules
+                      -> EGraphM a l ()
+runEqualitySaturationAPI schd isDone rewrites = runEqualitySaturation' 0 mempty 
   where
       rwMap = IM.fromList $ zip [1..] rewrites 
+      queries = IM.map API.ruleLhs rwMap
+      appliers = IM.map API.ruleRhs rwMap
      
-      toPat (l :| _) = toPat l
-      toPat (l := _) = [ API.Equation _MAGIC_ROOT l ]
-      toMatch subst = Match (IM.delete _MAGIC_ROOT_INT subst) (subst IM.! _MAGIC_ROOT_INT)
+
+
+      -- toPat (l :| _) = toPat l
+      -- toPat (l := _) = [ API.Equation _MAGIC_ROOT l ]
+
+      -- toApp (l :| r) = toApp l API.A r
+      -- toApp (l := _) = [ API.Equation _MAGIC_ROOT l ]
+     
 
       -- Take map each rewrite rule to stats on its usage so we can do
       -- backoff scheduling. Each rewrite rule is assigned an integer
       -- (corresponding to its position in the list of rewrite rules)
       runEqualitySaturation' :: Int -> IM.IntMap (Stat schd) -> EGraphM a l ()
-      runEqualitySaturation' 8 _ = pure ()
       runEqualitySaturation' epoch stats = do
+          done <- isDone epoch
+          unless done $ do
             eg <- get
             let allTups = Idx.toAllTuples (classes eg)
             let isActive ix _ =  maybe True (not . isBanned epoch) (IM.lookup ix stats) 
-                matchesFound = Exec.runRewrites allTups (IM.filterWithKey isActive (fmap toPat rwMap))
-            let
-              (matches, stats') = mconcat $ do
-                k <- IM.keys rwMap
-                let lhs = rwMap IM.! k
-                case IM.lookup k stats of
-                  Just s | isBanned @schd epoch s -> pure ([], stats)
-                  x -> do
-                    let matches' = S.toList $ S.fromList $ toMatch <$> matchesFound IM.! k
-                    let newStats = updateStats schd epoch k x stats matches'
-                    pure (fmap (lhs,) matches', newStats)
-
-            -- let stats' = foldr (\(k, v::Score) acc -> updateStatsScore schd epoch k (acc IM.!? k) acc v) stats (IM.toList matches)
-            -- traceM ("Epoch " <> show (epoch, G.sizeNM (eg ^. _memo), IM.size (classes eg)))
-            -- traceM . show =<< get
             -- traceM . simpEg =<< get
-            -- traceM (unlines $ map show matches)
-            forM_ matches $ \(lhs, subst) -> do 
-                    applyMatchesRhs (lhs, subst) 
-            -- traceM "Pre rebuild:"
-            -- traceM . show =<< get
+
+            -- traceM (unlines $ map toStr matches)
+            scoreMap <- Exec.runRewritesM_ allTups (IM.filterWithKey isActive queries) appliers
+
+
+            let stats' = foldr (\(k, v::Score) acc -> updateStatsScore schd epoch k (acc IM.!? k) acc v) stats (IM.toList scoreMap)
            
             rebuild
-            -- traceM . simpEg =<< get
+
             let (beforeMemo, beforeClasses) = (eg^._memo, classes eg)
             (afterMemo, afterClasses) <- M.gets (\g -> (g^._memo, classes g))
-            -- traceM (show (G.sizeNM afterMemo, IM.size afterClasses))
             unless (G.sizeNM afterMemo == G.sizeNM beforeMemo
                        && IM.size afterClasses == IM.size beforeClasses)
                (runEqualitySaturation' (epoch+1) stats')
 
+-- toStr :: Language l => (Rewrite a l, Match) -> String
+-- toStr (rw, Match m cid) = show cid <> ": " <> show (sub l0) <> " => " <> show (sub r0) <> cond
+--   where
+--     sub (VariablePattern vp) = VariablePattern (m IM.! vp)
+--     sub (NonVariablePattern o) = NonVariablePattern $ fmap sub o
+--     cond = case conds of
+--       [] -> ""
+--       ls -> " (" <> show (length ls) <> " conditions)"
+
+--     (l0,r0,conds) = split rw []
+--     split (l :| p) acc = split l (p:acc)
+--     split (l := r) acc = (l,r,acc)
 -- {-# INLINE runEqualitySaturationFast#-}
 -- runEqualitySaturationFast :: forall a l schd
 --                        . (HasCallStack, Analysis a l, Language l, Scheduler schd)
@@ -197,7 +214,7 @@ runEqualitySaturation schd rewrites = runEqualitySaturation' 0 mempty where -- S
   -- backoff scheduling. Each rewrite rule is assigned an integer
   -- (corresponding to its position in the list of rewrite rules)
   runEqualitySaturation' :: Int -> IM.IntMap (Stat schd) -> EGraphM a l ()
-  runEqualitySaturation' 5 _ = return () -- Stop after X iterations
+  runEqualitySaturation' 30 _ = return () -- Stop after X iterations
   runEqualitySaturation' i stats = do
 
       egr <- get
@@ -211,11 +228,11 @@ runEqualitySaturation schd rewrites = runEqualitySaturation' 0 mempty where -- S
       -- ROMES:TODO parMap with chunks
       let (!matches, newStats) = mconcat (fmap (\(rw_id,rw) -> first (map (rw,)) $ matchWithScheduler db i stats rw_id rw) (zip [1..] rewrites))
 
-      -- Write-only phase, temporarily break invariants
-      traceM ("Epoch " <> show (i, G.sizeNM (egr ^. _memo), IM.size (classes egr)))
-      traceM . simpEg =<< get
+      -- traceM ("Epoch " <> show (i, G.sizeNM (egr ^. _memo), IM.size (classes egr)))
+      -- traceM . simpEg =<< get
 
-      traceM (unlines $ map show matches)
+      -- traceM (unlines $ map toStr matches)
+      -- Write-only phase, temporarily break invariants
       forM_ matches applyMatchesRhs
 
       -- Restore the invariants once per iteration
@@ -251,9 +268,9 @@ runEqualitySaturation schd rewrites = runEqualitySaturation' 0 mempty where -- S
                 -- Backoff scheduler: update stats
                 let newStats = updateStats schd i rw_id x stats matches'
 
-                (S.toList . S.fromList $ matches', newStats)
+                (matches', newStats)
 
-applyMatchesRhs :: (Analysis a l, Language l) =>  (Rewrite a l, Match) -> EGraphM a l ()
+applyMatchesRhs :: forall a l. (Analysis a l, Language l) =>  (Rewrite a l, Match) -> EGraphM a l ()
 applyMatchesRhs =
   \case
       (rw :| cond, m@(Match subst _)) -> do
@@ -279,7 +296,21 @@ applyMatchesRhs =
           -- substituted rhs with the class that matched the left hand side
           eclass' <- reprPat subst rhs
           _ <- merge eclass eclass'
+          -- eg <- get
+          -- rhs' <- fmap (flip find eg) <$> traverse (reprPat' subst) rhs
+          -- let nodes = eClassNodes (classes eg IM.! o)
+          -- let expected rhs = isSimplifier @a rhs || rhs==rhs'
+          -- let candidates = fmap (fmap (flip find eg) . unNode) $ S.toList nodes
+          -- let pairs = map (\x -> (x,  expected x)) candidates
+          -- if all (not.snd) pairs
+          -- then error ("Failed insertion " <> toStr (l := NonVariablePattern rhs, Match subst eclass) <> ", " <> show (eclass, eclass', o, pairs, rhs', pre))
+          -- else pure ()
+          -- else pure ()
           return ()
+-- | Represent a pattern in the e-graph a pattern given substitions
+-- reprPat' :: (Language l, Analysis a l) => Subst -> (Pattern l) -> EGraphM a l ClassId
+-- reprPat' subst (VariablePattern v)= pure $ subst IM.! v
+-- reprPat' subst (NonVariablePattern f)= reprPat subst f
 
 -- | Represent a pattern in the e-graph a pattern given substitions
 reprPat :: (Language l, Analysis a l) => Subst -> l (Pattern l) -> EGraphM a l ClassId
@@ -291,3 +322,10 @@ reprPat subst = add . Node <=< traverse \case
   NonVariablePattern p -> reprPat subst p
 {-# INLINEABLE runEqualitySaturation #-}
 
+-- repro = egraph @[] @() $ do
+--     leaf <- add (Node [])
+--     node1 <- add (Node [leaf, leaf])
+--     node2 <- add (Node [leaf, node1])
+--     node <- merge node1 leaf
+--     runEqualitySaturation2 defaultBackoffScheduler 
+--     rebuild

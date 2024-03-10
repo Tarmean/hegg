@@ -15,6 +15,7 @@ import qualified Data.Equality.Analysis as A
 import Data.Functor (void)
 import Data.Equality.Saturation.Scheduler (Score)
 import qualified Data.Equality.Saturation.Scheduler as Score
+import Debug.Trace (traceM)
 
 type RewriteCondition anl lang = R.Subst -> E.EGraph anl lang -> Bool
 
@@ -43,11 +44,25 @@ chain = foldr (liftA2 (liftA2 (<>))) (const (pure mempty))
 (~) l r subst = do  
   ln <- resolveNode (subst IM.!) l
   rn <- resolveNode (subst IM.!) r
-  _ <- state $ E.merge ln rn
+  oid <- state $ E.merge ln rn
+  pure (Score.fromSubst subst)
+eqlDebug :: (A.Analysis ana lang, E.Language lang, MonadState (E.EGraph ana lang) m) => P.Pattern lang -> P.Pattern lang -> OnMatch m
+eqlDebug l r subst = do  
+  ln <- resolveNode (subst IM.!) l
+  rn <- resolveNode (subst IM.!) r
+  oid <- state $ E.merge ln rn
+  traceM (toStr l ln r rn oid subst)
   pure (Score.fromSubst subst)
 
+toStr :: E.Language l => P.Pattern l -> E.ClassId -> P.Pattern l -> E.ClassId -> E.ClassId -> R.Subst -> String
+toStr l0 lid r0 rid oid m = show (lid,rid,oid) <> ": " <> show (sub l0) <> " => " <> show (sub r0)
+  where
+    sub (P.VariablePattern vp) = P.VariablePattern (m IM.! vp)
+    sub (P.NonVariablePattern o) = P.NonVariablePattern $ fmap sub o
+
+
 {-# INLINE forEachMatch #-}
-forEachMatch :: (MonadState (E.EGraph ana lang) m, E.Language lang, A.Analysis ana lang) => [Equation lang] -> ((P.Pattern lang -> m E.ClassId) -> m ()) -> Rule lang m
+forEachMatch :: (MonadState (E.EGraph ana lang) m, E.Language lang, A.Analysis ana lang) => [Equation lang] -> ((P.Pattern lang -> m E.ClassId) -> m c) -> Rule lang m
 forEachMatch eqs onMatch = Rule eqs $ \subst -> Score.fromSubst subst <$ onMatch (resolveNode (subst IM.!))
 
 foo :: (MonadState (E.EGraph ana l) m, E.Language l, A.Analysis ana l) => P.Pattern l -> P.Pattern l -> Rule l m
@@ -56,10 +71,7 @@ foo lhs rhs = Rule ["_MAGIC_ROOT" .= lhs] ("_MAGIC_ROOT" ~ rhs)
     
 {-# INLINE (.==) #-}
 (.==) :: (MonadState (E.EGraph ana l) m, E.Language l, A.Analysis ana l) => P.Pattern l -> P.Pattern l -> Rule l m
-(.==) lhs rhs = forEachMatch ["_MAGIC_ROOT" .= lhs] $ \toNode -> do
-    l <- toNode "_MAGIC_ROOT"
-    r <- toNode rhs
-    void $ state $ E.merge l r
+(.==) lhs rhs = Rule ["_MAGIC_ROOT" .= lhs] ("_MAGIC_ROOT" ~ rhs)
 
 
 

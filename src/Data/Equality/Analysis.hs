@@ -96,6 +96,8 @@ class (Show domain, Eq domain) => Analysis domain (l :: Type -> Type) where
             -- ^ E-graph resulting from the modification
     modifyA _ = id
     {-# INLINE modifyA #-}
+    isSimplifier :: l ClassId -> Bool
+    isSimplifier _ = False
 
 
 -- | The simplest analysis that defines the domain to be () and does nothing

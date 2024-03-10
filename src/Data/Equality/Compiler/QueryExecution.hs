@@ -28,12 +28,32 @@ import Data.Equality.Compiler.Utils ((!!!))
 import qualified Data.IntSet as IS
 import qualified Data.Equality.Compiler.API as API
 import Debug.Trace (traceM)
+import Data.Semigroup (Endo(..))
+import Control.Monad.Writer.CPS
+import Control.Monad (forM_)
+import Data.Functor.Identity
 
 {-# INLINE runRewrites #-}
-runRewrites :: forall lang. (L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> IM.IntMap [ P.Subst ]
+runRewrites :: forall lang . (L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> (IM.IntMap [ P.Subst ])
 runRewrites db rw = 
-   flip IM.map plans $ \(toPat, queryPlan) -> do
-      toPat <$> executeQuery queryPlan indices
+   runIdentity $ runRewritesM db rw write getAll 
+  where
+   write _ x = tell (Endo (x:))
+getAll :: (Monoid r, Monad m) => WriterT (Endo r) m () -> m r
+getAll = fmap (flip appEndo mempty) . execWriterT
+
+{-# INLINE runRewritesM_ #-}
+runRewritesM_ :: (Monoid r, Monad m, L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> IM.IntMap (P.Subst -> m r) -> m (IM.IntMap r)
+runRewritesM_ db rw conts = runRewritesM db rw app execWriterT
+  where
+    app idx v = tell =<< lift ((conts IM.! idx) v)
+
+{-# INLINE runRewritesM #-}
+runRewritesM :: (Monad m, Monad n, L.Language lang) => AllTuples lang -> IM.IntMap [ API.Equation lang ] -> (Int -> P.Subst -> m ()) -> (m () -> n r) -> n (IM.IntMap r)
+runRewritesM db rw cont finalize =
+   flip IM.traverseWithKey plans $ \k (toPat, queryPlan) ->
+     finalize $
+       forM_ (executeQuery queryPlan indices) (cont k . toPat)
   where
    plans = planQueries db rw
    reqIndices = S.fromList $ concatMap (IM.elems . usedIndexes . snd) (IM.elems plans)
@@ -46,7 +66,7 @@ executeQuery (AllClasses is) (Indices ls _) = [IM.fromList [ (var, cid) |var <- 
 executeQuery query indices = go indexRoots (_queryOrder query) mempty
   where
    indexRoots = IM.map (allIndices indices HM.!) (usedIndexes query)
-   idToVarOrder key = _varMappings query  !!! key
+   idToVarOrder ixId = _varMappings query  !!! ixId
    -- Each level:
    -- - Iterate over keys from some source, which give us new substitutions
    -- - Lookup those substitutions in all indices which overlap. This moves us one level down in those trees
@@ -55,7 +75,7 @@ executeQuery query indices = go indexRoots (_queryOrder query) mempty
    go _ [] subst = pure subst
    go indexes (step:steps) subst = do
       let
-        idToIndex key = indexes !!! key
+        idToIndex ixId = indexes !!! ixId
         indexChild key ixId  = case getIndex (idToVarOrder ixId) key (idToIndex ixId) of
           Nothing -> Nothing
           Just newIndex -> Just (ixId,newIndex)
