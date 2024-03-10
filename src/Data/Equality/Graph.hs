@@ -254,7 +254,7 @@ rebuild (EGraph uf cls mm wl awl) =
   in
   -- Loop until worklist is completely empty
   if null (worklist egr'') && null (analysisWorklist egr'')
-     then egr''
+     then normClasses egr''
      else rebuild egr'' -- ROMES:TODO: Doesn't seem to be needed at all in the testsuite.
 {-# INLINEABLE rebuild #-}
 
